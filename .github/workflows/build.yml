@@ -1,0 +1,40 @@
+name: ${{ github.event.client_payload.buildRef }}
+
+on:
+  repository_dispatch:
+    types: [build-plugin]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: 拉取仓库代码
+        uses: actions/checkout@v4
+
+      - name: 校验构建参数
+        env:
+          PARAMS: ${{ toJson(github.event.client_payload.params) }}
+        run: |
+          echo "$PARAMS" | jq -e 'type == "object"' >/dev/null \
+            || { echo "::error::params 必须是 JSON 对象"; exit 1; }
+          echo "$PARAMS" > build_params.json
+          echo "参数校验通过："
+          jq . build_params.json
+
+      - name: 编译插件
+        env:
+          BUILD_REF: ${{ github.event.client_payload.buildRef }}
+        run: |
+          mkdir -p out
+          echo "在此处放置你的编译命令，产物放入 out/ 目录"
+
+      - name: 上传产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.client_payload.artifactPrefix }}-${{ github.run_id }}
+          path: out/*
+          retention-days: 7
