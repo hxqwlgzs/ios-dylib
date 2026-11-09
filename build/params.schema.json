@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "name": "gzhmod",
+  "note": "构建参数契约。tools/render.py 与 server 端 GzhParams 必须共用这一份定义，不允许各自硬编码校验规则。字段上的 allowEmpty:true 表示「空字符串是合法输入」，用于表达「留空 = 沿用上游默认行为」；此类字段不要写 default，否则空值会被 default 顶替。",
+
+  "charsets": {
+    "textline": "A-Za-z0-9 ,.!?:;'()\\[\\]\\-_/+=@#%*&~|\\u4e00-\\u9fff\\u3000-\\u303f\\uff01-\\uff5e\\u00b7\\u2014\\u2018-\\u201d\\u2026",
+    "text": "A-Za-z0-9 ,.!?:;'()\\[\\]\\-_/+=@#%*&~|\\u4e00-\\u9fff\\u3000-\\u303f\\uff01-\\uff5e\\u00b7\\u2014\\u2018-\\u201d\\u2026\\n",
+    "debline": "A-Za-z0-9 ,.+\\-_/=()<>:~@",
+    "url": "A-Za-z0-9\\-._~:/?#\\[\\]@!$&'()*+,;=%"
+  },
+
+  "kinds": {
+    "gh_id":      { "charset": null,       "maxLen": 15,  "desc": "微信公众号原始 ID，形如 gh_ + 12 位十六进制" },
+    "gh_id_list": { "charset": null,       "maxLen": 32,  "desc": "gh_id 数组，最多 32 项" },
+    "bundle_list": { "charset": null,      "maxLen": 10,  "desc": "bundle id 数组，最多 10 项" },
+    "textline":   { "charset": "textline", "maxLen": 60,  "desc": "单行文案，禁止换行、禁止反斜杠与半角双引号" },
+    "text":       { "charset": "text",     "maxLen": 200, "desc": "多行文案，换行会被转义为 \\n" },
+    "url":        { "charset": "url",      "maxLen": 300, "desc": "必须是 https:// 开头的绝对地址" },
+    "bool":       { "charset": null,       "maxLen": 1,   "desc": "0 或 1" },
+    "enum":       { "charset": null,       "maxLen": 32,  "desc": "枚举值，必须命中 options" },
+    "semver":     { "charset": null,       "maxLen": 12,  "desc": "x.y.z 三段版本号" },
+    "debid":      { "charset": null,       "maxLen": 64,  "desc": "deb 包名，小写字母数字加 . + - _" },
+    "debline":    { "charset": "debline",  "maxLen": 200, "desc": "deb control 单行字段值，禁止换行" },
+    "debext":     { "charset": "textline", "maxLen": 400, "desc": "deb Description 扩展描述，可多行，每行会被加上续行缩进" },
+    "color":      { "charset": null, "maxLen": 7, "desc": "十六进制颜色，只用 patterns.color 做严格校验，报错信息比字符集更直白" }
+  },
+
+  "patterns": {
+    "gh_id":    "^gh_[0-9a-fA-F]{12}$",
+    "bundle":   "^[A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)*$",
+    "semver":   "^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$",
+    "debid":    "^[a-z0-9][a-z0-9+._-]{2,63}$",
+    "url":      "^https://[^\\s]+$",
+    "color":    "^#[0-9a-fA-F]{6}$",
+    "trim":     "^[^\\s].*[^\\s]$|^[^\\s]$"
+  },
+
+  "outputs": [
+    { "template": "templates/GzhConfig.h.tpl",  "target": "src/GzhConfig.h", "label": "插件配置头文件" },
+    { "template": "templates/control.tpl",      "target": "control",         "label": "deb 包元信息" },
+    { "template": "templates/gzhmod.plist.tpl", "target": "gzhmod.plist",    "label": "注入目标 plist" }
+  ],
+
+  "groups": [
+    { "id": "target",  "label": "关注目标",   "desc": "决定要校验哪一个公众号，以及点击关注时打开哪里" },
+    { "id": "alert",   "label": "弹窗文案",   "desc": "未关注时弹出的提示文案" },
+    { "id": "alertui", "label": "弹窗样式",   "desc": "弹窗的呈现形式、按钮与配色，三个弹窗共用" },
+    { "id": "setting", "label": "设置页",     "desc": "设置页的标题与页面上的文本" },
+    { "id": "section", "label": "分组标题",   "desc": "功能分区的大标题" },
+    { "id": "switch",  "label": "功能开关",   "desc": "关闭后对应逻辑编译期内联为常量，不产生任何行为" },
+    { "id": "pkg",     "label": "包信息",     "desc": "deb 包的元数据", "advanced": true },
+    { "id": "inject",  "label": "注入目标",   "desc": "决定这个包装到哪个 App 上。默认只有官方微信，需要支持马甲包 / 多开版时在这里追加", "advanced": true }
+  ],
+
+  "fields": [
+    { "name": "GH_ID", "kind": "gh_id", "group": "target", "required": true,
+      "label": "目标公众号 gh_id",
+      "hint": "在公众号后台或关注二维码链接中获取，形如 gh_d48cc2ee664d",
+      "default": "gh_d48cc2ee664d" },
+
+    { "name": "HOME_URL", "kind": "url", "group": "target", "required": true,
+      "label": "关注引导跳转地址",
+      "hint": "点击「立即关注」后由微信内置浏览器打开的页面，必须是 https",
+      "default": "https://mp.weixin.qq.com/s/fpW-pzHqHX0zwb-OURF-qg" },
+
+    { "name": "FAKE_FOLLOWED_IDS", "kind": "gh_id_list", "group": "target", "advanced": true,
+      "label": "强制判定为已关注的 gh_id",
+      "hint": "留空表示不做伪造。仅在 ENABLE_FAKE_FOLLOW 打开时生效",
+      "default": [] },
+
+    { "name": "ALERT_A_TITLE", "kind": "textline", "group": "alert", "required": true,
+      "label": "插件页弹窗标题", "default": "请关注极速云iOS" },
+    { "name": "ALERT_A_MSG", "kind": "text", "group": "alert", "required": true,
+      "label": "插件页弹窗正文",
+      "hint": "支持换行",
+      "default": "公众号:极速云iOS\n即可解锁所有功能！" },
+    { "name": "ALERT_A_BTN", "kind": "textline", "group": "alert", "required": true,
+      "label": "插件页弹窗按钮", "default": "立即关注" },
+
+    { "name": "ALERT_B_TITLE", "kind": "textline", "group": "alert", "required": true,
+      "label": "设置页弹窗标题", "default": "提示" },
+    { "name": "ALERT_B_MSG", "kind": "text", "group": "alert", "required": true,
+      "label": "设置页弹窗正文",
+      "hint": "支持换行",
+      "default": "请关注公众号解锁所有功能\n关注完成后返回设置页再进入即可" },
+    { "name": "ALERT_B_BTN", "kind": "textline", "group": "alert", "required": true,
+      "label": "设置页弹窗按钮", "default": "立即关注" },
+
+    { "name": "SETTING_TITLE", "kind": "textline", "group": "setting", "allowEmpty": true, "maxLen": 20,
+      "label": "设置页导航栏标题",
+      "hint": "页面顶部中间那行字。留空 = 沿用原插件自己的标题，不做修改" },
+
+    { "name": "SEC_LOCKED", "kind": "textline", "group": "setting", "required": true,
+      "label": "未解锁分组标题", "default": "功能未解锁" },
+    { "name": "LOCKED_CELL_TITLE", "kind": "textline", "group": "setting", "required": true,
+      "label": "未解锁条目标题", "default": "请关注公众号解锁更多功能" },
+    { "name": "LOCKED_CELL_VALUE", "kind": "textline", "group": "setting", "required": true,
+      "label": "未解锁条目右侧文字", "default": "点击关注" },
+    { "name": "SUPPORT_CELL_TITLE", "kind": "textline", "group": "setting", "required": true,
+      "label": "公众号条目标题", "default": "公众号" },
+    { "name": "FOLLOWED_TEXT", "kind": "textline", "group": "setting", "required": true,
+      "label": "已关注状态文字", "default": "已关注" },
+    { "name": "NOT_FOLLOW_TEXT", "kind": "textline", "group": "setting", "required": true,
+      "label": "未关注状态文字", "default": "点击关注" },
+    { "name": "ALREADY_FOLLOWED", "kind": "textline", "group": "setting", "required": true,
+      "label": "已关注提示语", "default": "您已关注该公众号" },
+    { "name": "CELL_CONFIRM", "kind": "textline", "group": "setting", "required": true,
+      "label": "确认按钮文字", "default": "确定" },
+
+    { "name": "ALERT_STYLE", "kind": "enum", "group": "alertui", "required": true,
+      "label": "弹窗呈现样式",
+      "hint": "alert = 屏幕正中弹出的圆角对话框；actionsheet = 从屏幕底部升起的菜单",
+      "options": ["alert", "actionsheet"], "default": "alert" },
+
+    { "name": "ALERT_TINT", "kind": "color", "group": "alertui", "required": true,
+      "label": "弹窗强调色",
+      "hint": "按钮文字与标题的着色，形如 #007AFF。留默认即 iOS 系统蓝",
+      "default": "#007AFF" },
+
+    { "name": "ALERT_PRIMARY_STYLE", "kind": "enum", "group": "alertui", "required": true,
+      "label": "主按钮样式",
+      "hint": "default = 普通蓝色；cancel = 加粗强调；destructive = 红色警示",
+      "options": ["default", "cancel", "destructive"], "default": "default" },
+
+    { "name": "ALERT_A_BTN2", "kind": "textline", "group": "alertui", "allowEmpty": true,
+      "label": "插件页弹窗 · 第二按钮",
+      "hint": "留空 = 单按钮。填上则多出一个可关闭弹窗的按钮，例如「暂不」" },
+
+    { "name": "ALERT_A_BTN2_STYLE", "kind": "enum", "group": "alertui", "required": true,
+      "label": "插件页弹窗 · 第二按钮样式",
+      "options": ["default", "cancel", "destructive"], "default": "cancel" },
+
+    { "name": "ALERT_B_BTN2", "kind": "textline", "group": "alertui", "allowEmpty": true,
+      "label": "设置页弹窗 · 第二按钮",
+      "hint": "留空 = 单按钮。填上则多出一个可关闭弹窗的按钮" },
+
+    { "name": "ALERT_B_BTN2_STYLE", "kind": "enum", "group": "alertui", "required": true,
+      "label": "设置页弹窗 · 第二按钮样式",
+      "options": ["default", "cancel", "destructive"], "default": "cancel" },
+
+    { "name": "SEC_BASIC", "kind": "textline", "group": "section", "required": true,
+      "label": "基础功能分组标题", "default": "红包设置" },
+    { "name": "SEC_ADVANCE", "kind": "textline", "group": "section", "required": true,
+      "label": "进阶功能分组标题", "default": "消息屏蔽|在群聊或私聊右上角进去打开" },
+    { "name": "SEC_FAKE_LOC", "kind": "text", "group": "section", "required": true,
+      "label": "虚拟定位分组标题",
+      "hint": "支持换行",
+      "default": "开启后,即可修改微信朋友圈定位\n长按你要修改到的位置即可｜关闭则回到真实位置" },
+    { "name": "SEC_TP", "kind": "textline", "group": "section", "required": true,
+      "label": "摄像头背景分组标题", "default": "开启后,将使用摄像头实时摄像为聊天背景" },
+
+    { "name": "ENABLE_FOLLOW_GATE", "kind": "bool", "group": "switch", "required": true,
+      "label": "启用关注门槛", "default": 1 },
+    { "name": "ENABLE_FAKE_FOLLOW", "kind": "bool", "group": "switch", "required": true,
+      "label": "启用关注状态伪造",
+      "hint": "需要同时配置 FAKE_FOLLOWED_IDS 才有意义",
+      "default": 1 },
+
+    { "name": "PKG_NAME", "kind": "debid", "group": "pkg", "required": true,
+      "label": "deb 包名（Package）", "default": "com.gzhmod.tweak" },
+    { "name": "PKG_DISPLAY_NAME", "kind": "textline", "group": "pkg", "required": true,
+      "label": "显示名称（Name）", "default": "公众号模块" },
+    { "name": "PKG_VERSION", "kind": "semver", "group": "pkg", "required": true,
+      "label": "版本号（Version）", "default": "1.0.0" },
+    { "name": "PKG_DESCRIPTION", "kind": "debext", "group": "pkg", "required": true,
+      "label": "描述（Description）",
+      "hint": "第一行为摘要，之后每行会自动加上续行缩进",
+      "default": "微信公众号模块（关注状态读取 / 关注门槛 / 微信设置页集成）\n基于 Theos 注入 com.tencent.xin，不含抢红包、虚拟定位、卡密等模块。" },
+    { "name": "PKG_HOMEPAGE", "kind": "url", "group": "pkg",
+      "label": "主页（Homepage）", "default": "https://example.local" },
+    { "name": "PKG_MAINTAINER", "kind": "debline", "group": "pkg", "required": true,
+      "label": "维护者（Maintainer）", "default": "local" },
+    { "name": "PKG_AUTHOR", "kind": "debline", "group": "pkg", "required": true,
+      "label": "作者（Author）", "default": "local" },
+    { "name": "PKG_SECTION", "kind": "enum", "group": "pkg", "required": true,
+      "label": "分类（Section）",
+      "options": ["Tweaks", "Utilities", "System", "Themes", "Development"],
+      "default": "Tweaks" },
+    { "name": "PKG_DEPENDS", "kind": "debline", "group": "pkg", "required": true,
+      "label": "依赖（Depends）", "default": "mobilesubstrate, firmware (>= 14.0)" },
+
+    { "name": "EXTRA_BUNDLES", "kind": "bundle_list", "group": "inject",
+      "label": "额外注入目标",
+      "hint": "填微信马甲包 / 多开版的 bundle id，可填多个（自动补 .notificationservice 变体）。留空 = 只注入官方微信 com.tencent.xin，行为与以前完全一致。只对「同一份微信内核、只改了包名」的版本有效 —— 企业微信或其它 App 的类名不同，插件挂了也不会生效",
+      "default": [] }
+  ]
+}
