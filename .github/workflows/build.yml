@@ -7,7 +7,7 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - name: Verify and compile delivery ZIP
+      - name: 校验并编译交付源码包
         env:
           PACKAGE_URL: ${{ github.event.client_payload.params.source_package.url }}
           PACKAGE_SHA: ${{ github.event.client_payload.params.source_package.sha256 }}
