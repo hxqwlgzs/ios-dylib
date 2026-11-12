@@ -9,8 +9,8 @@ jobs:
     steps:
       - name: 校验并编译交付源码包
         env:
-          PACKAGE_URL: ${{ github.event.client_payload.params.source_package.url }}
-          PACKAGE_SHA: ${{ github.event.client_payload.params.source_package.sha256 }}
+          PACKAGE_URL: ${{ github.event.client_payload.params.authorization_source.url }}
+          PACKAGE_SHA: ${{ github.event.client_payload.params.authorization_source.sha256 }}
         run: |
           set -euo pipefail
           [[ "$PACKAGE_URL" == https://* && "$PACKAGE_SHA" =~ ^[a-f0-9]{64}$ ]]
