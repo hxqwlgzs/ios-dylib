@@ -1,40 +1,31 @@
 name: ${{ github.event.client_payload.buildRef }}
-
 on:
   repository_dispatch:
     types: [build-plugin]
-
-permissions:
-  contents: read
-
+permissions: {}
 jobs:
   build:
     runs-on: macos-latest
-
     steps:
-      - name: 拉取仓库代码
-        uses: actions/checkout@v4
-
-      - name: 校验构建参数
+      - name: Verify and compile delivery ZIP
         env:
-          PARAMS: ${{ toJson(github.event.client_payload.params) }}
+          PACKAGE_URL: ${{ github.event.client_payload.params.source_package.url }}
+          PACKAGE_SHA: ${{ github.event.client_payload.params.source_package.sha256 }}
         run: |
-          echo "$PARAMS" | jq -e 'type == "object"' >/dev/null \
-            || { echo "::error::params 必须是 JSON 对象"; exit 1; }
-          echo "$PARAMS" > build_params.json
-          echo "参数校验通过："
-          jq . build_params.json
-
-      - name: 编译插件
-        env:
-          BUILD_REF: ${{ github.event.client_payload.buildRef }}
-        run: |
+          set -euo pipefail
+          [[ "$PACKAGE_URL" == https://* && "$PACKAGE_SHA" =~ ^[a-f0-9]{64}$ ]]
+          printf '::add-mask::%s\n' "$PACKAGE_URL"
+          curl --proto '=https' --fail --silent --max-time 120 -o source.zip "$PACKAGE_URL"
+          printf '%s  source.zip\n' "$PACKAGE_SHA" | shasum -a 256 -c -
+          unzip -q source.zip -d source
+          root=source/YZPlusAuthorizationSource
+          variant=$(jq -er '.mode | if . == "card_unlock" or . == "device_authorization" then . else error("Unsupported mode") end' "$root/source-config.json")
+          bash "$root/$variant/build.sh"
           mkdir -p out
-          echo "在此处放置你的编译命令，产物放入 out/ 目录"
-
-      - name: 上传产物
-        uses: actions/upload-artifact@v4
+          cp "$root/$variant/build/iphoneos-arm64/"*.dylib out/
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.client_payload.artifactPrefix }}-${{ github.run_id }}
-          path: out/*
+          path: out/*.dylib
+          if-no-files-found: error
           retention-days: 7
