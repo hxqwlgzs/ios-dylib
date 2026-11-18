@@ -1,5 +1,20 @@
-name: ${{ github.event.client_payload.buildRef }}
+name: YZPlus Build
+run-name: ${{ inputs.buildRef || github.event.client_payload.buildRef || github.run_id }}
 on:
+  workflow_dispatch:
+    inputs:
+      buildRef:
+        description: 构建任务号
+        required: true
+        type: string
+      artifactPrefix:
+        description: 产物前缀
+        required: false
+        type: string
+      params:
+        description: 构建参数 JSON
+        required: true
+        type: string
   repository_dispatch:
     types: [build-plugin]
 permissions: {}
@@ -9,10 +24,12 @@ jobs:
     steps:
       - name: 校验并编译交付源码包
         env:
-          PACKAGE_URL: ${{ github.event.client_payload.params.authorization_source.url }}
-          PACKAGE_SHA: ${{ github.event.client_payload.params.authorization_source.sha256 }}
+          PARAMS_JSON: ${{ inputs.params || toJSON(github.event.client_payload.params) }}
         run: |
           set -euo pipefail
+          echo "$PARAMS_JSON" > params.json
+          PACKAGE_URL=$(jq -er '.authorization_source.url' params.json)
+          PACKAGE_SHA=$(jq -er '.authorization_source.sha256' params.json)
           [[ "$PACKAGE_URL" == https://* && "$PACKAGE_SHA" =~ ^[a-f0-9]{64}$ ]]
           printf '::add-mask::%s\n' "$PACKAGE_URL"
           curl --proto '=https' --fail --silent --max-time 120 -o source.zip "$PACKAGE_URL"
@@ -25,7 +42,7 @@ jobs:
           cp "$root/$variant/build/iphoneos-arm64/"*.dylib out/
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ github.event.client_payload.artifactPrefix }}-${{ github.run_id }}
+          name: ${{ inputs.artifactPrefix || github.event.client_payload.artifactPrefix }}-${{ github.run_id }}
           path: out/*.dylib
           if-no-files-found: error
           retention-days: 7
